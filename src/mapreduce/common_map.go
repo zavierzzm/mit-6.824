@@ -68,11 +68,15 @@ func doMap(
 				if err != nil {
 					break
 				}
-				err = encs[int(ihash(kv.Key))%nReduce].Encode(&kv)
+				x := (int(ihash(kv.Key)) + nReduce) % nReduce
+				// if mapTaskNumber == 99 {
+				// 	fmt.Printf("\n\n\nhash %d", x)
+				// }
+				err = encs[x].Encode(&kv)
 			}
 		}
 	}
-
+	input.Close()
 	for _, file := range files {
 		file.Close()
 	}

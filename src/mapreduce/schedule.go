@@ -1,6 +1,9 @@
 package mapreduce
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // schedule starts and waits for all tasks in the given phase (Map or Reduce).
 func (mr *Master) schedule(phase jobPhase) {
@@ -24,5 +27,57 @@ func (mr *Master) schedule(phase jobPhase) {
 	//
 	// TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
 	//
+	var wg sync.WaitGroup
+	wg.Add(ntasks)
+	// availableChannel := make(chan string, len(mr.workers))
+
+	for i := 0; i < ntasks; i++ {
+		fmt.Println(i)
+		work := <-mr.registerChannel
+		switch phase {
+		case mapPhase:
+			var args DoTaskArgs
+			args.JobName = mr.jobName
+			args.File = mr.files[i]
+			args.Phase = mapPhase
+			args.TaskNumber = i
+			args.NumOtherPhase = nios
+			go func(arg DoTaskArgs, worker string) {
+				defer wg.Done()
+				for {
+					ok := call(worker, "Worker.DoTask", args, new(struct{}))
+					if ok {
+						go func() {
+							mr.registerChannel <- worker
+						}()
+						break
+					} else {
+						worker = <-mr.registerChannel
+					}
+				}
+			}(args, work)
+		case reducePhase:
+			var args DoTaskArgs
+			args.JobName = mr.jobName
+			args.Phase = reducePhase
+			args.TaskNumber = i
+			args.NumOtherPhase = nios
+			go func(arg DoTaskArgs, worker string) {
+				defer wg.Done()
+				for {
+					ok := call(worker, "Worker.DoTask", args, new(struct{}))
+					if ok {
+						go func() {
+							mr.registerChannel <- worker
+						}()
+						break
+					} else {
+						worker = <-mr.registerChannel
+					}
+				}
+			}(args, work)
+		}
+	}
+	wg.Wait()
 	fmt.Printf("Schedule: %v phase done\n", phase)
 }
